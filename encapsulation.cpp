@@ -1,85 +1,188 @@
 #include <iostream>
 #include <fstream>
 #include <string>
+#include <vector>
+ 
 using namespace std;
-
-class CNCMachineMonitor {
-private:
-    float temperature;
-    float dimensionVariation;
-    int continuousOperationMinutes;
-    int selfTestCode;
-
+ 
+// Base interface for all monitors (optional for scalability)
+class IMonitor {
 public:
-    void updateTemperature(float valueCelsius) {
-        temperature = valueCelsius;
+    virtual void check() = 0;
+    virtual vector<string> getAlerts() const = 0;
+    virtual void clearAlerts() = 0;
+    virtual ~IMonitor() = default;
+};
+ 
+class TemperatureMonitor : public IMonitor {
+private:
+    float temperature = 0;
+    vector<string> alerts;
+public:
+    void update(float value) {
+        temperature = value;
+    }
+ 
+    void check() override {
+        alerts.clear();
         if (temperature > 35.0) {
-            cout << "ALERT: High temperature detected (Environment)" << endl;
+            alerts.push_back("ALERT: High temperature detected (Environment)");
         }
     }
-
-    void updateDimensionVariation(float variationMM) {
-        dimensionVariation = variationMM;
-        if (dimensionVariation > 0.05) {
-            cout << "ALERT: Part-dimension variation too high (Machine)" << endl;
+ 
+    vector<string> getAlerts() const override {
+        return alerts;
+    }
+ 
+    void clearAlerts() override {
+        alerts.clear();
+    }
+};
+ 
+class DimensionMonitor : public IMonitor {
+private:
+    float variation = 0;
+    vector<string> alerts;
+public:
+    void update(float value) {
+        variation = value;
+    }
+ 
+    void check() override {
+        alerts.clear();
+        if (variation > 0.05) {
+            alerts.push_back("ALERT: Part-dimension variation too high (Machine)");
         }
     }
-
-    void updateContinuousOperation(int minutes) {
-        continuousOperationMinutes = minutes;
-        if (continuousOperationMinutes > 360) {
-            cout << "ALERT: Continuous operation exceeded 6 hours (Machine)" << endl;
+ 
+    vector<string> getAlerts() const override {
+        return alerts;
+    }
+ 
+    void clearAlerts() override {
+        alerts.clear();
+    }
+};
+ 
+class OperationMonitor : public IMonitor {
+private:
+    int minutes = 0;
+    vector<string> alerts;
+public:
+    void update(int value) {
+        minutes = value;
+    }
+ 
+    void check() override {
+        alerts.clear();
+        if (minutes > 360) {
+            alerts.push_back("ALERT: Continuous operation exceeded 6 hours (Machine)");
         }
     }
-
-    void checkSelfTestCode(int code) {
-        selfTestCode = code;
+ 
+    vector<string> getAlerts() const override {
+        return alerts;
+    }
+ 
+    void clearAlerts() override {
+        alerts.clear();
+    }
+};
+ 
+class SelfTestMonitor : public IMonitor {
+private:
+    int code = 0;
+    vector<string> alerts;
+public:
+    void update(int value) {
+        code = value;
+    }
+ 
+    void check() override {
+        alerts.clear();
         switch (code) {
             case 0xFF:
-                cout << "Self-test OK" << endl;
+                alerts.push_back("Self-test OK");
                 break;
             case 0x00:
-                cout << "ALERT: No data from machine (Environment)" << endl;
+                alerts.push_back("ALERT: No data from machine (Environment)");
                 break;
             case 0x01:
-                cout << "ALERT: Controller board failure (Machine)" << endl;
+                alerts.push_back("ALERT: Controller board failure (Machine)");
                 break;
             case 0x02:
-                cout << "ALERT: Configuration data corrupted (Machine)" << endl;
+                alerts.push_back("ALERT: Configuration data corrupted (Machine)");
                 break;
             default:
-                cout << "ALERT: Unknown self-test code (Machine)" << endl;
+                alerts.push_back("ALERT: Unknown self-test code (Machine)");
+        }
+    }
+ 
+    vector<string> getAlerts() const override {
+        return alerts;
+    }
+ 
+    void clearAlerts() override {
+        alerts.clear();
+    }
+};
+ 
+class CNCMachineMonitor {
+private:
+    TemperatureMonitor tempMonitor;
+    DimensionMonitor dimMonitor;
+    OperationMonitor opMonitor;
+    SelfTestMonitor selfTestMonitor;
+ 
+public:
+    void processInput(float temp, float variation, int minutes, int selfTestCode) {
+        tempMonitor.update(temp);
+        dimMonitor.update(variation);
+        opMonitor.update(minutes);
+        selfTestMonitor.update(selfTestCode);
+ 
+        tempMonitor.check();
+        dimMonitor.check();
+        opMonitor.check();
+        selfTestMonitor.check();
+ 
+        printAlerts(tempMonitor);
+        printAlerts(dimMonitor);
+        printAlerts(opMonitor);
+        printAlerts(selfTestMonitor);
+ 
+        cout << "---" << endl;
+ 
+        tempMonitor.clearAlerts();
+        dimMonitor.clearAlerts();
+        opMonitor.clearAlerts();
+        selfTestMonitor.clearAlerts();
+    }
+ 
+private:
+    void printAlerts(const IMonitor& monitor) {
+        for (const auto& alert : monitor.getAlerts()) {
+            cout << alert << endl;
         }
     }
 };
-
+ 
 int main() {
     CNCMachineMonitor monitor;
     ifstream infile("cnc_data.txt");
-
+ 
     if (!infile) {
         cerr << "Error opening input file." << endl;
         return 1;
     }
-
+ 
     float temp, variation;
     int minutes, selfTest;
-
+ 
     while (infile >> temp >> variation >> minutes >> hex >> selfTest) {
-        monitor.updateTemperature(temp);
-        monitor.updateDimensionVariation(variation);
-        monitor.updateContinuousOperation(minutes);
-        monitor.checkSelfTestCode(selfTest);
-        cout << "---" << endl;
+        monitor.processInput(temp, variation, minutes, selfTest);
     }
-
+ 
     infile.close();
     return 0;
 }
-
-/*
-Example input file (cnc_data.txt):
-38.5 0.06 400 0x01
-34.0 0.03 200 0xFF
-36.0 0.04 300 0x00
-*/
